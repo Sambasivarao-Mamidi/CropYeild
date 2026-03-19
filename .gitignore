@@ -16,6 +16,4 @@ __pycache__/
 .vscode/
 .idea/
 
-# Datasets / Sensitive Data
-crop_yield_training_dataset.csv
-*.csv
+
