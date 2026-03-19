@@ -150,17 +150,31 @@
                         <div class="input-group">
                             <label>Soil Moisture (%)</label>
                             <input type="number" id="inp-moist" value="40" step="1" min="0" max="100">
-                            <span class="input-hint">0 to 100</span>
+                            <span class="input-hint">For Recommendations</span>
+                        </div>
+                        <div class="input-group">
+                            <label>Soil pH</label>
+                            <input type="number" id="inp-ph" value="6.5" step="0.1" min="0" max="14">
+                            <span class="input-hint">0 to 14</span>
+                        </div>
+                        <div class="input-group">
+                            <label>Land Size (ha)</label>
+                            <input type="number" id="inp-land-size" value="1.0" step="0.1" min="0.1" max="10000">
+                            <span class="input-hint">In Hectares</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="form-section">
-                    <h4>🧪 Soil & Crop Selection</h4>
+                    <h4>🧪 Soil & Farming Practices</h4>
                     <div class="input-row">
                         <div class="input-group">
-                            <label>Soil Fertility</label>
-                            <select id="inp-fertility"></select>
+                            <label>Fertilizer Used (kg/ha)</label>
+                            <input type="number" id="inp-fert-used" value="150" step="5" min="0" max="5000">
+                        </div>
+                        <div class="input-group">
+                            <label>Pesticides Used (kg/ha)</label>
+                            <input type="number" id="inp-pest-used" value="10" step="1" min="0" max="1000">
                         </div>
                         <div class="input-group">
                             <label>Crop Type</label>

@@ -160,15 +160,7 @@ const App = {
 
     initPredictForm() {
         fetch('/api/model-stats').then(r => r.json()).then(data => {
-            const fertSel = document.getElementById('inp-fertility');
             const cropSel = document.getElementById('inp-crop');
-            
-            (data.fertility_options || []).forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = f;
-                opt.textContent = f;
-                fertSel.appendChild(opt);
-            });
             
             (data.crop_options || []).forEach(c => {
                 const opt = document.createElement('option');
@@ -176,10 +168,6 @@ const App = {
                 opt.textContent = c;
                 cropSel.appendChild(opt);
             });
-            
-            if (data.fertility_options && data.fertility_options.includes('Medium')) {
-                fertSel.value = 'Medium';
-            }
         });
 
         document.getElementById('btn-predict').addEventListener('click', async () => {
@@ -190,19 +178,21 @@ const App = {
             try {
                 const temp = parseFloat(document.getElementById('inp-temp').value);
                 const rain = parseFloat(document.getElementById('inp-rain').value);
-                const moist = parseFloat(document.getElementById('inp-moist').value);
-                const fert = document.getElementById('inp-fertility').value;
+                const ph = parseFloat(document.getElementById('inp-ph').value);
+                const fertUsed = parseFloat(document.getElementById('inp-fert-used').value);
+                const pestUsed = parseFloat(document.getElementById('inp-pest-used').value);
                 const crop = document.getElementById('inp-crop').value;
 
-                if (isNaN(temp) || isNaN(rain) || isNaN(moist)) {
+                if (isNaN(temp) || isNaN(rain) || isNaN(ph) || isNaN(fertUsed) || isNaN(pestUsed)) {
                     throw new Error('Please enter valid numbers');
                 }
 
                 const body = {
                     temperature: temp,
                     rainfall: rain,
-                    soil_moisture: moist,
-                    fertility: fert,
+                    soil_ph: ph,
+                    fertilizer_used: fertUsed,
+                    pesticides_used: pestUsed,
                     crop_type: crop,
                 };
                 
@@ -226,9 +216,10 @@ const App = {
                     <strong>Input Conditions:</strong><br>
                     🌡️ Temperature: <strong>${temp}°C</strong> | 
                     🌧️ Rainfall: <strong>${rain}mm</strong> | 
-                    💧 Soil Moisture: <strong>${moist}%</strong><br><br>
+                    🧪 Soil pH: <strong>${ph}</strong><br><br>
                     🌾 Crop: <strong>${crop}</strong> | 
-                    🧪 Soil Fertility: <strong>${fert.toLowerCase()}</strong><br><br>
+                    🚜 Fertilizer: <strong>${fertUsed} kg/ha</strong> | 
+                    🛡️ Pesticide: <strong>${pestUsed} kg/ha</strong><br><br>
                     📊 Predicted Yield: <strong>${data.predicted_yield} t/ha</strong><br>
                     📈 Dataset Average: ${data.mean_yield} t/ha<br>
                     📋 Quality: <strong>${data.quality}</strong><br>
@@ -247,6 +238,7 @@ const App = {
         const temp = parseFloat(document.getElementById('inp-temp').value) || this.defaults.temp;
         const rain = parseFloat(document.getElementById('inp-rain').value) || this.defaults.rain;
         const moisture = parseFloat(document.getElementById('inp-moist').value) || this.defaults.moisture;
+        const landSize = parseFloat(document.getElementById('inp-land-size')?.value) || 1.0;
 
         const contextEl = document.getElementById('recommend-context');
         if (this.currentCity) {
@@ -254,7 +246,8 @@ const App = {
                 <span class="icon">📍</span> <strong>${this.currentCity.name}</strong> | 
                 <span class="icon">🌡️</span> ${temp}°C | 
                 <span class="icon">🌧️</span> ${rain}mm | 
-                <span class="icon">💧</span> ${moist}%
+                <span class="icon">💧</span> ${moisture}% |
+                <span class="icon">📏</span> ${landSize} ha
             `;
         } else {
             contextEl.innerHTML = `<span class="icon">💡</span> Enter conditions in the Prediction tab or select a city to get personalized recommendations`;
@@ -266,7 +259,7 @@ const App = {
         if (spinner) spinner.classList.add('show');
 
         try {
-            const res = await fetch(`/api/recommend?temp=${temp}&rain=${rain}&moisture=${moisture}`);
+            const res = await fetch(`/api/recommend?temp=${temp}&rain=${rain}&moisture=${moisture}&land_size=${landSize}`);
             const data = await res.json();
             
             if (spinner) spinner.classList.remove('show');
@@ -307,6 +300,15 @@ const App = {
                                 <div class="crop-detail-item">
                                     <div class="crop-detail-label">Soil</div>
                                     <div class="crop-detail-value">${r.soil_type}</div>
+                                </div>
+                                <div class="crop-detail-item" style="grid-column: span 3; background: #f0fdf4;">
+                                    <div class="crop-detail-label">🧪 Recommended Fertilizer</div>
+                                    <div class="crop-detail-value">${r.fertilizer}</div>
+                                </div>
+                                <div class="crop-detail-item" style="grid-column: span 3; background: #eff6ff;">
+                                    <div class="crop-detail-label">💧 Est. Water Required (${landSize} ha)</div>
+                                    <div class="crop-detail-value">${r.water_req_liters ? r.water_req_liters.toLocaleString() + ' Liters' : 'Sufficient Rainfall'}</div>
+                                    <div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">Assuming ${rain}mm rain. Need ${r.water_needs_mm}mm total.</div>
                                 </div>
                             </div>
                         </div>
@@ -931,12 +933,14 @@ const App = {
         const temp = parseFloat(document.getElementById('inp-temp').value) || this.defaults.temp;
         const rain = parseFloat(document.getElementById('inp-rain').value) || this.defaults.rain;
         const moisture = parseFloat(document.getElementById('inp-moist').value) || this.defaults.moisture;
+        const landSize = parseFloat(document.getElementById('inp-land-size')?.value) || 1.0;
         
         const params = new URLSearchParams({
             format: format,
             temp: temp,
             rain: rain,
-            moisture: moisture
+            moisture: moisture,
+            land_size: landSize
         });
         
         window.open(`/api/export-recommendations?${params}`, '_blank');

@@ -22,28 +22,28 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, make_response
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split, cross_val_score, KFold
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestClassifier
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_absolute_percentage_error
 
 app = Flask(__name__)
 
 # ==================== DATA LOADING & MODEL TRAINING ====================
-DATA_PATH = "crop_yield_training_dataset.csv"
-df = pd.read_csv(DATA_PATH)
+print("Loading Yield Prediction Dataset...")
+YIELD_DATA_PATH = "crop_yield_dataset.csv"
+df_yield = pd.read_csv(YIELD_DATA_PATH)
 
-le_fertility = LabelEncoder()
 le_crop = LabelEncoder()
-df["Soil_Fertility_Encoded"] = le_fertility.fit_transform(df["Soil_Fertility"])
-df["Crop_Type_Encoded"] = le_crop.fit_transform(df["Crop_Type"])
+df_yield["Crop_Type_Encoded"] = le_crop.fit_transform(df_yield["Crop"])
 
-feature_cols = ["Temperature", "Rainfall", "Soil_Moisture", "Soil_Fertility_Encoded", "Crop_Type_Encoded"]
-X = df[feature_cols]
-y = df["Yield"]
+# Use the more advanced features from crop_yield_dataset.csv
+feature_cols = ["Temperature_C", "Rainfall_mm", "Soil_pH", "Fertilizer_Used_kg", "Pesticides_Used_kg", "Crop_Type_Encoded"]
+X_yield = df_yield[feature_cols]
+y_yield_target = df_yield["Yield_ton_per_ha"]
 
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+X_scaled = scaler.fit_transform(X_yield)
 
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_yield_target, test_size=0.2, random_state=42)
 
 model = GradientBoostingRegressor(
     n_estimators=200,
@@ -61,42 +61,51 @@ rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 r2 = r2_score(y_test, y_pred)
 mape = mean_absolute_percentage_error(y_test, y_pred) * 100
 
-cv_scores = cross_val_score(model, X_scaled, y, cv=5, scoring='neg_mean_absolute_error')
-cv_mae = -cv_scores.mean()
-cv_scores_r2 = cross_val_score(model, X_scaled, y, cv=5, scoring='r2')
-cv_r2 = cv_scores_r2.mean()
-
-kfold = KFold(n_splits=5, shuffle=True, random_state=42)
-kf_mae = []
-kf_r2 = []
-for train_idx, test_idx in kfold.split(X_scaled):
-    X_kf_train, X_kf_test = X_scaled[train_idx], X_scaled[test_idx]
-    y_kf_train, y_kf_test = y.iloc[train_idx], y.iloc[test_idx]
-    kf_model = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=4, random_state=42)
-    kf_model.fit(X_kf_train, y_kf_train)
-    kf_pred = kf_model.predict(X_kf_test)
-    kf_mae.append(mean_absolute_error(y_kf_test, kf_pred))
-    kf_r2.append(r2_score(y_kf_test, kf_pred))
-
-fertility_map = {label: int(idx) for idx, label in enumerate(le_fertility.classes_)}
 crop_type_map = {label: int(idx) for idx, label in enumerate(le_crop.classes_)}
 
+print("Loading Fertilizer Prediction Dataset...")
+FERT_DATA_PATH = "Fertilizer Prediction.csv"
+df_fert = pd.read_csv(FERT_DATA_PATH)
+
+le_fert_crop = LabelEncoder()
+le_soil = LabelEncoder()
+df_fert["Crop_Type_Encoded"] = le_fert_crop.fit_transform(df_fert["Crop Type"])
+df_fert["Soil_Type_Encoded"] = le_soil.fit_transform(df_fert["Soil Type"])
+
+fert_feature_cols = ["Temparature", "Humidity", "Moisture", "Crop_Type_Encoded", "Nitrogen", "Potassium", "Phosphorous"]
+X_fert = df_fert[fert_feature_cols]
+y_fert = df_fert["Fertilizer Name"]
+
+fert_scaler = StandardScaler()
+X_fert_scaled = fert_scaler.fit_transform(X_fert)
+
+fert_model = RandomForestClassifier(n_estimators=100, random_state=42)
+fert_model.fit(X_fert_scaled, y_fert)
+fert_accuracy = fert_model.score(X_fert_scaled, y_fert)
+
+fert_crop_map = {label: int(idx) for idx, label in enumerate(le_fert_crop.classes_)}
+fert_soil_map = {label: int(idx) for idx, label in enumerate(le_soil.classes_)}
+
+print("Loading Crop Ideal NPK Data...")
+CROP_DATA_PATH = "crop_data.csv"
+df_crop_data = pd.read_csv(CROP_DATA_PATH)
+CROP_NPK_MAP = {}
+for _, row in df_crop_data.iterrows():
+    CROP_NPK_MAP[row["CROP"].lower().strip()] = {
+        "N": row["N"],
+        "P": row["P"],
+        "K": row["K"]
+    }
+
 print("="*60)
-print("AgriSense - Model Training Complete")
+print("AgriSense - Models Training Complete")
 print("="*60)
-print(f"Model: Gradient Boosting Regressor")
-print(f"Training samples: {len(X_train)}")
-print(f"Test samples: {len(X_test)}")
-print(f"MAE: {mae:.3f} t/ha")
-print(f"RMSE: {rmse:.3f} t/ha")
-print(f"R²: {r2:.2%}")
-print(f"MAPE: {mape:.2f}%")
-print(f"Cross-Val MAE: {cv_mae:.3f} ± {np.std(-cv_scores):.3f}")
-print(f"Cross-Val R²: {cv_r2:.2%} ± {np.std(cv_scores_r2):.2%}")
-print(f"K-Fold MAE: {np.mean(kf_mae):.3f} ± {np.std(kf_mae):.3f}")
-print(f"Fertility classes: {list(fertility_map.keys())}")
-print(f"Crop classes: {list(crop_type_map.keys())}")
+print(f"Yield Model: Gradient Boosting Regressor")
+print(f"R²: {r2:.2%} | MAE: {mae:.3f} t/ha | RMSE: {rmse:.3f} t/ha")
+print(f"Fertilizer Model: RandomForestClassifier (Accuracy: {fert_accuracy:.2%})")
+print(f"Yield Crop classes: {list(crop_type_map.keys())}")
 print("="*60)
+
 
 # ==================== CONFIGURATION ====================
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -110,37 +119,43 @@ CROP_IDEAL = {
         "temp": [10, 25], "rain": [50, 150], "moisture": [20, 50],
         "emoji": "🌾", "desc": "Cool-weather crop, moderate water needs",
         "season": "Winter/Spring", "days_to_harvest": "120-150",
-        "soil_type": "Loamy", "ph_range": "6.0-7.0"
+        "soil_type": "Loamy", "ph_range": "6.0-7.0",
+        "water_needs_mm": 450, "fertilizer": "Urea, DAP, MOP"
     },
     "Rice": {
         "temp": [20, 35], "rain": [150, 300], "moisture": [40, 80],
         "emoji": "🍚", "desc": "Warm-weather crop, high water needs",
         "season": "Monsoon/Summer", "days_to_harvest": "100-150",
-        "soil_type": "Clay", "ph_range": "5.5-7.0"
+        "soil_type": "Clay", "ph_range": "5.5-7.0",
+        "water_needs_mm": 1200, "fertilizer": "NPK 15-15-15, Urea"
     },
     "Corn": {
         "temp": [18, 32], "rain": [80, 200], "moisture": [30, 60],
         "emoji": "🌽", "desc": "Warm-weather crop, moderate water needs",
         "season": "Summer", "days_to_harvest": "60-100",
-        "soil_type": "Loamy", "ph_range": "5.8-7.0"
+        "soil_type": "Loamy", "ph_range": "5.8-7.0",
+        "water_needs_mm": 600, "fertilizer": "NPK 20-20-20"
     },
     "Soybean": {
         "temp": [20, 30], "rain": [50, 150], "moisture": [25, 50],
         "emoji": "🫘", "desc": "Warm-season legume, moderate water",
         "season": "Summer", "days_to_harvest": "80-120",
-        "soil_type": "Loamy", "ph_range": "6.0-7.0"
+        "soil_type": "Loamy", "ph_range": "6.0-7.0",
+        "water_needs_mm": 450, "fertilizer": "DAP, MOP (Low N needed)"
     },
     "Cotton": {
         "temp": [20, 35], "rain": [50, 150], "moisture": [20, 45],
         "emoji": "☁️", "desc": "Warm-season crop, drought-tolerant",
         "season": "Summer", "days_to_harvest": "150-180",
-        "soil_type": "Sandy Loam", "ph_range": "5.5-8.0"
+        "soil_type": "Sandy Loam", "ph_range": "5.5-8.0",
+        "water_needs_mm": 700, "fertilizer": "Urea, NPK 10-26-26"
     },
     "Barley": {
         "temp": [5, 20], "rain": [30, 100], "moisture": [15, 40],
         "emoji": "🌿", "desc": "Cool-season grain, low water needs",
         "season": "Winter", "days_to_harvest": "90-120",
-        "soil_type": "Loamy", "ph_range": "6.0-7.5"
+        "soil_type": "Loamy", "ph_range": "6.0-7.5",
+        "water_needs_mm": 300, "fertilizer": "Urea, DAP"
     },
 }
 
@@ -239,7 +254,7 @@ def validate_input(value, min_val, max_val, name):
     except (ValueError, TypeError):
         return None, f"Invalid {name}"
 
-def recommend_crops(temp, rain, moisture):
+def recommend_crops(temp, rain, moisture, land_size_ha=1.0):
     results = []
     for crop, ideal in CROP_IDEAL.items():
         s_t = _range_score(temp, *ideal["temp"])
@@ -247,11 +262,25 @@ def recommend_crops(temp, rain, moisture):
         s_m = _range_score(moisture, *ideal["moisture"])
         suitability = round((s_t + s_r + s_m) / 3 * 100, 1)
         
-        crop_enc = crop_type_map.get(crop, 0)
-        fert_enc = fertility_map.get("Medium", 1)
+        crop_name_lower = crop.lower()
+        if crop_name_lower in CROP_NPK_MAP:
+            n = CROP_NPK_MAP[crop_name_lower]["N"]
+            p = CROP_NPK_MAP[crop_name_lower]["P"]
+            k = CROP_NPK_MAP[crop_name_lower]["K"]
+        else:
+            n, p, k = 50, 50, 50
+            
+        f_crop = fert_crop_map.get(crop, 0)
+        fert_features = fert_scaler.transform([[temp, 50, moisture, f_crop, n, k, p]])
+        predicted_fert = fert_model.predict(fert_features)[0]
         
-        input_features = scaler.transform([[temp, rain, moisture, fert_enc, crop_enc]])
+        yld_crop_enc = crop_type_map.get(crop, 0)
+        input_features = scaler.transform([[temp, rain, 6.5, 100, 10, yld_crop_enc]])
         pred = model.predict(input_features)[0]
+        
+        water_needs = ideal.get("water_needs_mm", 0)
+        water_deficit_mm = max(0, water_needs - rain)
+        water_req_liters = round(water_deficit_mm * 10000 * land_size_ha)
         
         results.append({
             "crop": crop,
@@ -263,6 +292,10 @@ def recommend_crops(temp, rain, moisture):
             "days_to_harvest": ideal.get("days_to_harvest", "N/A"),
             "soil_type": ideal.get("soil_type", "N/A"),
             "ph_range": ideal.get("ph_range", "N/A"),
+            "fertilizer": predicted_fert,
+            "water_needs_mm": water_needs,
+            "water_deficit_mm": water_deficit_mm,
+            "water_req_liters": water_req_liters,
             "ideal": ideal,
         })
     results.sort(key=lambda r: (r["suitability"], r["predicted_yield"]), reverse=True)
@@ -440,26 +473,28 @@ def api_predict():
     rain, err = validate_input(data.get("rainfall"), 0, 1000, "Rainfall")
     if err: return jsonify({"error": err}), 400
     
-    moist, err = validate_input(data.get("soil_moisture"), 0, 100, "Soil moisture")
+    soil_ph, err = validate_input(data.get("soil_ph", 6.5), 0, 14, "Soil pH")
     if err: return jsonify({"error": err}), 400
     
-    fert = data.get("fertility", "Medium")
+    fert_used, err = validate_input(data.get("fertilizer_used", 100), 0, 5000, "Fertilizer Used")
+    if err: return jsonify({"error": err}), 400
+    
+    pest_used, err = validate_input(data.get("pesticides_used", 10), 0, 1000, "Pesticides Used")
+    if err: return jsonify({"error": err}), 400
+    
     crop = data.get("crop_type")
     
     if crop not in crop_type_map:
         return jsonify({"error": f"Invalid crop type. Available: {list(crop_type_map.keys())}"}), 400
-    if fert not in fertility_map:
-        return jsonify({"error": f"Invalid fertility. Available: {list(fertility_map.keys())}"}), 400
     
     try:
-        fert_enc = fertility_map[fert]
         crop_enc = crop_type_map[crop]
         
-        input_features = scaler.transform([[temp, rain, moist, fert_enc, crop_enc]])
+        input_features = scaler.transform([[temp, rain, soil_ph, fert_used, pest_used, crop_enc]])
         pred = model.predict(input_features)[0]
         
-        mean_yield = float(y.mean())
-        std_yield = float(y.std())
+        mean_yield = float(y_yield_target.mean())
+        std_yield = float(y_yield_target.std())
         
         quality = "average"
         if pred < mean_yield - std_yield:
@@ -475,8 +510,9 @@ def api_predict():
             "input": {
                 "temperature": temp,
                 "rainfall": rain,
-                "soil_moisture": moist,
-                "fertility": fert,
+                "soil_ph": soil_ph,
+                "fertilizer_used": fert_used,
+                "pesticides_used": pest_used,
                 "crop_type": crop
             },
             "predicted_yield": round(float(pred), 2),
@@ -500,12 +536,14 @@ def api_recommend():
     temp = request.args.get("temp", 25, type=float)
     rain = request.args.get("rain", 120, type=float)
     moisture = request.args.get("moisture", 40, type=float)
+    land_size = request.args.get("land_size", 1.0, type=float)
     
     temp = max(-10, min(60, temp))
     rain = max(0, min(1000, rain))
     moisture = max(0, min(100, moisture))
+    land_size = max(0.1, min(10000, land_size))
     
-    recs = recommend_crops(temp, rain, moisture)
+    recs = recommend_crops(temp, rain, moisture, land_size)
     
     best = recs[0]
     ideal = best["ideal"]
@@ -523,17 +561,18 @@ def api_recommend():
         "conditions": conditions,
         "crop_ideals": {k: {"temp": v["temp"], "rain": v["rain"], "moisture": v["moisture"],
                             "emoji": v["emoji"], "season": v.get("season", "N/A"),
-                            "soil_type": v.get("soil_type", "N/A"), "ph_range": v.get("ph_range", "N/A")} 
+                            "soil_type": v.get("soil_type", "N/A"), "ph_range": v.get("ph_range", "N/A"),
+                            "water_needs_mm": v.get("water_needs_mm", "N/A"), "fertilizer": v.get("fertilizer", "N/A")} 
                          for k, v in CROP_IDEAL.items()},
-        "current_conditions": {"temp": temp, "rain": rain, "moisture": moisture}
+        "current_conditions": {"temp": temp, "rain": rain, "moisture": moisture, "land_size": land_size}
     })
 
 @app.route("/api/model-stats")
 def api_model_stats():
     friendly = {
-        "Temperature": "Temperature", "Rainfall": "Rainfall",
-        "Soil_Moisture": "Soil Moisture", "Soil_Fertility_Encoded": "Soil Fertility",
-        "Crop_Type_Encoded": "Crop Type",
+        "Temperature_C": "Temperature", "Rainfall_mm": "Rainfall",
+        "Soil_pH": "Soil pH", "Fertilizer_Used_kg": "Fertilizer Used (kg/ha)",
+        "Pesticides_Used_kg": "Pesticides Used (kg/ha)", "Crop_Type_Encoded": "Crop Type",
     }
     importance = [{"feature": friendly.get(f, f), "coefficient": round(float(c), 4)}
                   for f, c in zip(feature_cols, model.feature_importances_)]
@@ -547,7 +586,7 @@ def api_model_stats():
             "max_depth": 5,
             "training_samples": len(X_train),
             "test_samples": len(X_test),
-            "total_samples": len(df),
+            "total_samples": len(df_yield),
             "features": feature_cols,
             "target": "Yield (tons/hectare)"
         },
@@ -571,16 +610,15 @@ def api_model_stats():
         "residuals": [round(float(y_test.values[i] - y_pred[i]), 2) for i in range(len(y_pred))],
         "spread": round(float(np.std(y_test.values - y_pred)), 2),
         "yield_stats": {
-            "min": round(float(y.min()), 2),
-            "max": round(float(y.max()), 2),
-            "mean": round(float(y.mean()), 2),
-            "std": round(float(y.std()), 2),
-            "median": round(float(y.median()), 2),
-            "q25": round(float(y.quantile(0.25)), 2),
-            "q75": round(float(y.quantile(0.75)), 2),
-            "values": [round(float(v), 2) for v in y.values],
+            "min": round(float(y_yield_target.min()), 2),
+            "max": round(float(y_yield_target.max()), 2),
+            "mean": round(float(y_yield_target.mean()), 2),
+            "std": round(float(y_yield_target.std()), 2),
+            "median": round(float(y_yield_target.median()), 2),
+            "q25": round(float(y_yield_target.quantile(0.25)), 2),
+            "q75": round(float(y_yield_target.quantile(0.75)), 2),
+            "values": [round(float(v), 2) for v in y_yield_target.values],
         },
-        "fertility_options": list(fertility_map.keys()),
         "crop_options": list(crop_type_map.keys()),
     })
 
@@ -714,8 +752,9 @@ def export_prediction():
         "input_parameters": {
             "temperature": data.get("temperature"),
             "rainfall": data.get("rainfall"),
-            "soil_moisture": data.get("soil_moisture"),
-            "fertility": data.get("fertility"),
+            "soil_ph": data.get("soil_ph"),
+            "fertilizer_used": data.get("fertilizer_used"),
+            "pesticides_used": data.get("pesticides_used"),
             "crop_type": data.get("crop_type")
         },
         "predicted_yield": data.get("predicted_yield"),
@@ -751,8 +790,9 @@ def export_recommendations():
     temp = request.args.get("temp", 25, type=float)
     rain = request.args.get("rain", 120, type=float)
     moisture = request.args.get("moisture", 40, type=float)
+    land_size = request.args.get("land_size", 1.0, type=float)
     
-    recs = recommend_crops(temp, rain, moisture)
+    recs = recommend_crops(temp, rain, moisture, land_size)
     
     rec_data = {
         "export_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
