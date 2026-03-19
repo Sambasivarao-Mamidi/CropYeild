@@ -322,6 +322,9 @@ const App = {
                             <div class="crop-yield-val">${(r.predicted_yield / 2.47105).toFixed(2)}</div>
                             <div class="crop-yield-label">t/acre</div>
                         </div>
+                        <button class="btn btn-outline btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="App.viewCropPlan('${r.crop}')">
+                            📅 View 7-Day Plan
+                        </button>
                     </div>
                 `;
             }).join('');
@@ -333,6 +336,80 @@ const App = {
         } catch (e) {
             if (spinner) spinner.classList.remove('show');
             container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error</h3><p>Failed to load recommendations</p></div>`;
+        }
+    },
+
+    async viewCropPlan(crop) {
+        const planTabBtn = document.getElementById('tab-btn-plan');
+        planTabBtn.style.display = 'flex';
+        planTabBtn.click();
+        
+        const container = document.getElementById('plan-days-container');
+        const headerInfo = document.getElementById('plan-header-info');
+        const spinner = document.getElementById('plan-spinner');
+        
+        container.innerHTML = '';
+        headerInfo.innerHTML = '';
+        spinner.style.display = 'block';
+        
+        if (!this.currentCity) {
+            spinner.style.display = 'none';
+            container.innerHTML = `<div class="empty-state"><div class="empty-icon">📍</div><h3>No Location</h3><p>Search for a city in the sidebar first.</p></div>`;
+            return;
+        }
+
+        const landSizeAcres = parseFloat(document.getElementById('inp-land-size')?.value) || 2.5;
+
+        try {
+            const res = await fetch(`/api/crop-plan?lat=${this.currentCity.lat}&lon=${this.currentCity.lon}&crop=${encodeURIComponent(crop)}&land_size=${landSizeAcres}`);
+            const data = await res.json();
+            
+            spinner.style.display = 'none';
+            if (data.error) throw new Error(data.error);
+
+            headerInfo.innerHTML = `
+                <strong>🌾 Crop:</strong> ${data.crop} &nbsp;|&nbsp; 
+                <strong>📍 Location:</strong> ${this.currentCity.name} &nbsp;|&nbsp; 
+                <strong>📏 Land:</strong> ${data.land_size_acres} acres
+            `;
+
+            container.innerHTML = data.plan.map(p => {
+                return `
+                    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.25rem; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem;">
+                            <strong style="font-size: 1.1rem; color: var(--text-primary);">${p.day}</strong> 
+                            <span style="color:var(--text-secondary); font-size:0.85rem;">${p.date}</span>
+                        </div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.85rem; color: var(--text-secondary);">🌡️ Temp Range</span>
+                                <strong style="font-size: 0.95rem; color: var(--text-primary);">${p.temp_max}°C / ${p.temp_min}°C</strong>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center; ${p.rain_mm > 0 ? 'background: rgba(59,130,246,0.05); padding: 6px 8px; border-radius: 4px; margin: 0 -8px;' : ''}">
+                                <span style="font-size: 0.85rem; color: var(--text-secondary);">🌧️ Expected Rain</span>
+                                <strong style="font-size: 0.95rem; color: ${p.rain_mm > 0 ? '#3b82f6' : 'var(--text-primary)'};">${p.rain_mm} mm</strong>
+                            </div>
+
+                            <div style="background: rgba(16,185,129,0.05); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid var(--success); margin-top: 0.25rem;">
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">💧 Watering Needs</div>
+                                <div style="font-weight: 700; color: var(--text-primary); font-size: 1.1rem;">${p.irrigation_liters.toLocaleString()} Liters</div>
+                                ${p.irrigation_liters === 0 ? '<div style="font-size:0.75rem; color:var(--success); margin-top:4px; font-weight: 500;">Rain is sufficient!</div>' : ''}
+                            </div>
+
+                            <div style="background: ${p.fert_action !== 'None' ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.03)'}; padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid ${p.fert_action !== 'None' ? 'var(--warning)' : 'var(--border)'};">
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">🧪 Fertilizer Action</div>
+                                <div style="font-weight: ${p.fert_action !== 'None' ? '600' : '500'}; color: var(--text-primary); font-size: 0.95rem;">${p.fert_action}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+        } catch (e) {
+            spinner.style.display = 'none';
+            container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Plan Error</h3><p>${e.message || 'Failed to fetch schedule.'}</p></div>`;
         }
     },
 

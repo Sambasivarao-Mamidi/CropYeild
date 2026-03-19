@@ -818,5 +818,68 @@ def export_recommendations():
     resp.headers["Content-Type"] = "application/json"
     return resp
 
+@app.route("/api/crop-plan")
+def api_crop_plan():
+    lat = request.args.get("lat", type=float)
+    lon = request.args.get("lon", type=float)
+    crop = request.args.get("crop", type=str)
+    land_size = request.args.get("land_size", 1.0, type=float)
+    
+    if lat is None or lon is None or not crop:
+        return jsonify({"error": "lat, lon, and crop required"}), 400
+        
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto"
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        daily = data.get("daily", {})
+        dates = daily.get("time", [])
+        precips = daily.get("precipitation_sum", [])
+        temp_max = daily.get("temperature_2m_max", [])
+        temp_min = daily.get("temperature_2m_min", [])
+        
+        ideal = CROP_IDEAL.get(crop, {})
+        daily_water_need_mm = ideal.get("water_needs_mm", 500) / 100.0
+        
+        fert_type = ideal.get("fertilizer", "Standard NPK")
+        total_fert = 60
+        fert_dose = total_fert / 3.0
+        
+        plan = []
+        for i in range(min(7, len(dates))):
+            date_str = dates[i]
+            day_name = datetime.strptime(date_str, "%Y-%m-%d").strftime("%A")
+            rain_mm = precips[i] if precips[i] is not None else 0
+            
+            irrigation_mm = max(0, daily_water_need_mm - rain_mm)
+            irrigation_liters = round(irrigation_mm * 4046.86 * land_size)
+            
+            fert_action = "None"
+            if i == 0 and rain_mm < 10:
+                fert_action = f"Apply {round(fert_dose, 1)} kg of {fert_type}"
+            elif i == 3 and rain_mm < 10:
+                fert_action = f"Apply {round(fert_dose, 1)} kg of {fert_type}"
+                
+            plan.append({
+                "date": date_str,
+                "day": day_name,
+                "temp_max": temp_max[i] if temp_max[i] else 0,
+                "temp_min": temp_min[i] if temp_min[i] else 0,
+                "rain_mm": rain_mm,
+                "irrigation_liters": irrigation_liters,
+                "fert_action": fert_action
+            })
+            
+        return jsonify({
+            "crop": crop,
+            "land_size_acres": land_size,
+            "plan": plan
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate plan: {str(e)}"}), 500
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

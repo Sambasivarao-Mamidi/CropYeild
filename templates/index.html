@@ -118,6 +118,10 @@
             <span class="tab-icon">📈</span>
             <span class="tab-label">Model Info</span>
         </button>
+        <button class="tab-btn" data-tab="plan" id="tab-btn-plan" style="display:none;">
+            <span class="tab-icon">📅</span>
+            <span class="tab-label">Crop Plan</span>
+        </button>
     </nav>
 
     <div class="content-area">
@@ -342,6 +346,23 @@
             <p class="section-desc">Difference between actual and predicted values</p>
             <div class="chart-wrapper"><canvas id="chart-residuals"></canvas></div>
             <div class="insight-box" id="residuals-insight"></div>
+        </div>
+
+        <div class="tab-panel" id="tab-plan">
+            <div class="panel-header">
+                <h2>📅 7-Day Action Plan</h2>
+                <p>Daily watering and fertilizer schedule based on weather forecast</p>
+            </div>
+            
+            <div class="insight-box" id="plan-header-info" style="margin-bottom: 1.5rem;"></div>
+            
+            <div id="plan-content">
+                <div class="loading-spinner" id="plan-spinner" style="display:none;">
+                    <div class="spinner"></div>
+                    <p>Generating 7-day schedule...</p>
+                </div>
+                <div id="plan-days-container" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:1rem;"></div>
+            </div>
         </div>
 
     </div>
