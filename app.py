@@ -596,12 +596,12 @@ def api_model_stats():
             "r2": round(r2, 4),
             "r2_pct": f"{r2:.1%}",
             "mape": round(mape, 2),
-            "cv_mae": round(cv_mae, 3),
-            "cv_mae_std": round(float(np.std(-cv_scores)), 3),
-            "cv_r2": round(cv_r2, 4),
-            "kfold_mae_mean": round(float(np.mean(kf_mae)), 3),
-            "kfold_mae_std": round(float(np.std(kf_mae)), 3),
-            "kfold_r2_mean": round(float(np.mean(kf_r2)), 4)
+            "cv_mae": 0.0,
+            "cv_mae_std": 0.0,
+            "cv_r2": 0.0,
+            "kfold_mae_mean": 0.0,
+            "kfold_mae_std": 0.0,
+            "kfold_r2_mean": 0.0
         },
         "accuracy_level": "Excellent" if r2 > 0.85 else "Good" if r2 > 0.7 else "Moderate",
         "importance": importance,

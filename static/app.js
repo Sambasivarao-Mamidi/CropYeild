@@ -160,13 +160,12 @@ const App = {
 
     initPredictForm() {
         fetch('/api/model-stats').then(r => r.json()).then(data => {
-            const cropSel = document.getElementById('inp-crop');
+            const cropList = document.getElementById('crop-list');
             
             (data.crop_options || []).forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c;
-                opt.textContent = c;
-                cropSel.appendChild(opt);
+                cropList.appendChild(opt);
             });
         });
 
@@ -179,11 +178,15 @@ const App = {
                 const temp = parseFloat(document.getElementById('inp-temp').value);
                 const rain = parseFloat(document.getElementById('inp-rain').value);
                 const ph = parseFloat(document.getElementById('inp-ph').value);
-                const fertUsed = parseFloat(document.getElementById('inp-fert-used').value);
-                const pestUsed = parseFloat(document.getElementById('inp-pest-used').value);
+                const fertUsedAcres = parseFloat(document.getElementById('inp-fert-used').value);
+                const pestUsedAcres = parseFloat(document.getElementById('inp-pest-used').value);
                 const crop = document.getElementById('inp-crop').value;
 
-                if (isNaN(temp) || isNaN(rain) || isNaN(ph) || isNaN(fertUsed) || isNaN(pestUsed)) {
+                // Model expects kg/ha, inputs are kg/acre
+                const fertUsed = fertUsedAcres * 2.47105;
+                const pestUsed = pestUsedAcres * 2.47105;
+
+                if (isNaN(temp) || isNaN(rain) || isNaN(ph) || isNaN(fertUsedAcres) || isNaN(pestUsedAcres)) {
                     throw new Error('Please enter valid numbers');
                 }
 
@@ -208,7 +211,8 @@ const App = {
                 this.lastPrediction = data;
                 
                 const resultBox = document.getElementById('predict-result');
-                document.getElementById('predict-result-text').textContent = data.predicted_yield;
+                const yieldPerAcre = (data.predicted_yield / 2.47105).toFixed(2);
+                document.getElementById('predict-result-text').textContent = yieldPerAcre;
                 resultBox.classList.add('show');
 
                 const insightEl = document.getElementById('predict-insight');
@@ -218,12 +222,12 @@ const App = {
                     🌧️ Rainfall: <strong>${rain}mm</strong> | 
                     🧪 Soil pH: <strong>${ph}</strong><br><br>
                     🌾 Crop: <strong>${crop}</strong> | 
-                    🚜 Fertilizer: <strong>${fertUsed} kg/ha</strong> | 
-                    🛡️ Pesticide: <strong>${pestUsed} kg/ha</strong><br><br>
-                    📊 Predicted Yield: <strong>${data.predicted_yield} t/ha</strong><br>
-                    📈 Dataset Average: ${data.mean_yield} t/ha<br>
+                    🚜 Fertilizer: <strong>${fertUsedAcres} kg/acre</strong> | 
+                    🛡️ Pesticide: <strong>${pestUsedAcres} kg/acre</strong><br><br>
+                    📊 Predicted Yield: <strong>${yieldPerAcre} t/acre</strong><br>
+                    📈 Dataset Average: ${(data.mean_yield / 2.47105).toFixed(2)} t/acre<br>
                     📋 Quality: <strong>${data.quality}</strong><br>
-                    ${data.confidence_interval ? `<br>📐 Confidence Range: ${data.confidence_interval.low} - ${data.confidence_interval.high} t/ha` : ''}
+                    ${data.confidence_interval ? `<br>📐 Confidence Range: ${(data.confidence_interval.low / 2.47105).toFixed(2)} - ${(data.confidence_interval.high / 2.47105).toFixed(2)} t/acre` : ''}
                 `;
             } catch (e) {
                 alert('Prediction error: ' + e.message);
@@ -238,7 +242,8 @@ const App = {
         const temp = parseFloat(document.getElementById('inp-temp').value) || this.defaults.temp;
         const rain = parseFloat(document.getElementById('inp-rain').value) || this.defaults.rain;
         const moisture = parseFloat(document.getElementById('inp-moist').value) || this.defaults.moisture;
-        const landSize = parseFloat(document.getElementById('inp-land-size')?.value) || 1.0;
+        const landSizeAcres = parseFloat(document.getElementById('inp-land-size')?.value) || 2.5;
+        const landSize = landSizeAcres / 2.47105;
 
         const contextEl = document.getElementById('recommend-context');
         if (this.currentCity) {
@@ -247,7 +252,7 @@ const App = {
                 <span class="icon">🌡️</span> ${temp}°C | 
                 <span class="icon">🌧️</span> ${rain}mm | 
                 <span class="icon">💧</span> ${moisture}% |
-                <span class="icon">📏</span> ${landSize} ha
+                <span class="icon">📏</span> ${landSizeAcres.toFixed(1)} acres
             `;
         } else {
             contextEl.innerHTML = `<span class="icon">💡</span> Enter conditions in the Prediction tab or select a city to get personalized recommendations`;
@@ -306,7 +311,7 @@ const App = {
                                     <div class="crop-detail-value">${r.fertilizer}</div>
                                 </div>
                                 <div class="crop-detail-item" style="grid-column: span 3; background: #eff6ff;">
-                                    <div class="crop-detail-label">💧 Est. Water Required (${landSize} ha)</div>
+                                    <div class="crop-detail-label">💧 Est. Water Required (${landSizeAcres.toFixed(1)} acres)</div>
                                     <div class="crop-detail-value">${r.water_req_liters ? r.water_req_liters.toLocaleString() + ' Liters' : 'Sufficient Rainfall'}</div>
                                     <div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">Assuming ${rain}mm rain. Need ${r.water_needs_mm}mm total.</div>
                                 </div>
@@ -314,8 +319,8 @@ const App = {
                         </div>
                         <div class="crop-badge ${badgeClass}">${r.suitability}%</div>
                         <div class="crop-yield">
-                            <div class="crop-yield-val">${r.predicted_yield}</div>
-                            <div class="crop-yield-label">t/ha</div>
+                            <div class="crop-yield-val">${(r.predicted_yield / 2.47105).toFixed(2)}</div>
+                            <div class="crop-yield-label">t/acre</div>
                         </div>
                     </div>
                 `;
