@@ -382,27 +382,6 @@ def api_docs():
     }
     return jsonify(docs)
 
-@app.route("/api/cities")
-def api_cities():
-    q = request.args.get("q", "")
-    if not q or len(q) < 2:
-        return jsonify([])
-    try:
-        resp = requests.get(GEOCODING_URL,
-            params={"name": q, "count": 8, "language": "en", "format": "json"},
-            timeout=5)
-        resp.raise_for_status()
-        cities = resp.json().get("results", [])
-        return jsonify([{
-            "name": c.get("name", ""),
-            "admin1": c.get("admin1", ""),
-            "country": c.get("country", ""),
-            "lat": c.get("latitude"),
-            "lon": c.get("longitude"),
-        } for c in cities])
-    except Exception as e:
-        return jsonify({"error": f"Failed to fetch cities: {str(e)}"})
-
 @app.route("/api/weather")
 def api_weather():
     lat = request.args.get("lat", type=float)
@@ -833,21 +812,17 @@ def export_recommendations():
     resp.headers["Content-Type"] = "application/json"
     return resp
 
-@app.route("/api/crop-plan")
+@app.route("/api/crop-plan", methods=["POST"])
 def api_crop_plan():
-    lat = request.args.get("lat", type=float)
-    lon = request.args.get("lon", type=float)
-    crop = request.args.get("crop", type=str)
-    land_size = request.args.get("land_size", 1.0, type=float)
+    req_data = request.get_json()
+    crop = req_data.get("crop")
+    land_size = req_data.get("land_size", 1.0)
+    data = req_data.get("forecast")
     
-    if lat is None or lon is None or not crop:
-        return jsonify({"error": "lat, lon, and crop required"}), 400
+    if not crop or not data:
+        return jsonify({"error": "crop and forecast data required"}), 400
         
     try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto"
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
         
         daily = data.get("daily", {})
         dates = daily.get("time", [])

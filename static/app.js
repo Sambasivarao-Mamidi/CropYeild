@@ -56,24 +56,30 @@ const App = {
             if (q.length < 2) { dropdown.classList.remove('show'); return; }
             debounce = setTimeout(async () => {
                 try {
-                    const res = await fetch(`/api/cities?q=${encodeURIComponent(q)}`);
+                    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json`);
                     const data = await res.json();
                     
-                    if (data.error) {
+                    if (data.error || !data.results || !data.results.length) {
                         dropdown.classList.remove('show');
                         return;
                     }
                     
-                    if (!data.length) { dropdown.classList.remove('show'); return; }
+                    const cities = data.results.map(c => ({
+                        name: c.name || '',
+                        admin1: c.admin1 || '',
+                        country: c.country || '',
+                        lat: c.latitude,
+                        lon: c.longitude
+                    }));
                     
-                    dropdown.innerHTML = data.map((c, i) =>
+                    dropdown.innerHTML = cities.map((c, i) =>
                         `<div class="city-option" data-idx="${i}">
                             <div class="city-name">${c.name}</div>
                             <div class="city-sub">${c.admin1 ? c.admin1 + ', ' : ''}${c.country}</div>
                         </div>`
                     ).join('');
                     dropdown.classList.add('show');
-                    dropdown._cities = data;
+                    dropdown._cities = cities;
                 } catch { dropdown.classList.remove('show'); }
             }, 300);
         });
@@ -361,7 +367,14 @@ const App = {
         const landSizeAcres = parseFloat(document.getElementById('inp-land-size')?.value) || 2.5;
 
         try {
-            const res = await fetch(`/api/crop-plan?lat=${this.currentCity.lat}&lon=${this.currentCity.lon}&crop=${encodeURIComponent(crop)}&land_size=${landSizeAcres}`);
+            const forecastRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${this.currentCity.lat}&longitude=${this.currentCity.lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`);
+            const forecastData = await forecastRes.json();
+
+            const res = await fetch(`/api/crop-plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ crop: crop, land_size: landSizeAcres, forecast: forecastData })
+            });
             const data = await res.json();
             
             spinner.style.display = 'none';
