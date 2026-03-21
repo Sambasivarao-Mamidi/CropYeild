@@ -24,6 +24,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split, cross_val_score, KFold
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestClassifier
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_absolute_percentage_error
+import joblib
 
 app = Flask(__name__)
 
@@ -45,16 +46,23 @@ X_scaled = scaler.fit_transform(X_yield)
 
 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_yield_target, test_size=0.2, random_state=42)
 
-model = GradientBoostingRegressor(
-    n_estimators=200,
-    learning_rate=0.1,
-    max_depth=5,
-    min_samples_split=5,
-    min_samples_leaf=3,
-    random_state=42
-)
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
+if os.path.exists("yield_model.pkl"):
+    print("Loading pre-trained Yield Model...")
+    model = joblib.load("yield_model.pkl")
+    y_pred = model.predict(X_test)
+else:
+    print("Training Yield Model...")
+    model = GradientBoostingRegressor(
+        n_estimators=200,
+        learning_rate=0.1,
+        max_depth=5,
+        min_samples_split=5,
+        min_samples_leaf=3,
+        random_state=42
+    )
+    model.fit(X_train, y_train)
+    joblib.dump(model, "yield_model.pkl")
+    y_pred = model.predict(X_test)
 
 mae = mean_absolute_error(y_test, y_pred)
 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
@@ -79,9 +87,16 @@ y_fert = df_fert["Fertilizer Name"]
 fert_scaler = StandardScaler()
 X_fert_scaled = fert_scaler.fit_transform(X_fert)
 
-fert_model = RandomForestClassifier(n_estimators=100, random_state=42)
-fert_model.fit(X_fert_scaled, y_fert)
-fert_accuracy = fert_model.score(X_fert_scaled, y_fert)
+if os.path.exists("fert_model.pkl"):
+    print("Loading pre-trained Fertilizer Model...")
+    fert_model = joblib.load("fert_model.pkl")
+    fert_accuracy = fert_model.score(X_fert_scaled, y_fert)
+else:
+    print("Training Fertilizer Model...")
+    fert_model = RandomForestClassifier(n_estimators=20, max_depth=10, min_samples_split=5, random_state=42)
+    fert_model.fit(X_fert_scaled, y_fert)
+    joblib.dump(fert_model, "fert_model.pkl")
+    fert_accuracy = fert_model.score(X_fert_scaled, y_fert)
 
 fert_crop_map = {label: int(idx) for idx, label in enumerate(le_fert_crop.classes_)}
 fert_soil_map = {label: int(idx) for idx, label in enumerate(le_soil.classes_)}
@@ -882,4 +897,5 @@ def api_crop_plan():
         return jsonify({"error": f"Failed to generate plan: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
