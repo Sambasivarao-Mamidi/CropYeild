@@ -397,50 +397,62 @@ def api_weather():
     days = min(days, 30)
     
     try:
-        end_date = datetime.now() - timedelta(days=1)
-        start_date = end_date - timedelta(days=days)
-        
-        resp = requests.get(NASA_POWER_URL, params={
-            "parameters": "T2M,T2M_MAX,T2M_MIN,PRECTOTCORR,RH2M,WS2M,ALLSKY_SFC_SW_DWN",
-            "community": "AG",
-            "longitude": round(lon, 4),
+        # Use Open-Meteo forecast API for real-time weather (today + forecast)
+        OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+        resp = requests.get(OPEN_METEO_URL, params={
             "latitude": round(lat, 4),
-            "start": start_date.strftime("%Y%m%d"),
-            "end": end_date.strftime("%Y%m%d"),
-            "format": "JSON",
-        }, timeout=30)
+            "longitude": round(lon, 4),
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,shortwave_radiation_sum",
+            "hourly": "relativehumidity_2m",
+            "current_weather": "true",
+            "timezone": "auto",
+            "forecast_days": days,
+        }, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        params = data.get("properties", {}).get("parameter", {})
         
-        if not params:
-            return jsonify({"error": "No data available for this location"}), 502
-
-        dates = sorted(params.get("T2M", {}).keys())
+        daily = data.get("daily", {})
+        dates = daily.get("time", [])
         
         if not dates:
             return jsonify({"error": "No weather data available for this location"}), 502
         
+        # Calculate daily average humidity from hourly data
+        hourly = data.get("hourly", {})
+        hourly_times = hourly.get("time", [])
+        hourly_rh = hourly.get("relativehumidity_2m", [])
+        daily_humidity = {}
+        for i, ht in enumerate(hourly_times):
+            day_key = ht[:10]  # "YYYY-MM-DD"
+            if day_key not in daily_humidity:
+                daily_humidity[day_key] = []
+            if i < len(hourly_rh) and hourly_rh[i] is not None:
+                daily_humidity[day_key].append(hourly_rh[i])
+        
         records = []
-        for d in dates:
-            t2m = params.get("T2M", {}).get(d, -999)
-            if t2m == -999:
+        for i, d in enumerate(dates):
+            t_max = daily.get("temperature_2m_max", [None])[i]
+            t_min = daily.get("temperature_2m_min", [None])[i]
+            if t_max is None or t_min is None:
                 continue
-            precip = max(0, params.get("PRECTOTCORR", {}).get(d, 0))
-            solar = params.get("ALLSKY_SFC_SW_DWN", {}).get(d, 0)
-            moisture = round(min(80, max(10, precip * 0.5 - (t2m - 20) * 0.8 + 35)), 1)
+            temp_avg = round((t_max + t_min) / 2, 1)
+            precip = round(max(0, daily.get("precipitation_sum", [0])[i] or 0), 1)
+            wind = round(daily.get("windspeed_10m_max", [0])[i] or 0, 1)
+            solar = round(daily.get("shortwave_radiation_sum", [0])[i] or 0, 1)
+            humidity = round(sum(daily_humidity.get(d, [50])) / max(1, len(daily_humidity.get(d, [50]))), 1)
+            moisture = round(min(80, max(10, precip * 0.5 - (temp_avg - 20) * 0.8 + 35)), 1)
             
             records.append({
-                "date": f"{d[:4]}-{d[4:6]}-{d[6:]}",
-                "day_of_week": datetime.strptime(f"{d[:4]}-{d[4:6]}-{d[6:]}", "%Y-%m-%d").strftime("%A"),
-                "temp": round(t2m, 1),
-                "temp_max": round(params.get("T2M_MAX", {}).get(d, t2m), 1),
-                "temp_min": round(params.get("T2M_MIN", {}).get(d, t2m), 1),
-                "precip": round(precip, 1),
-                "humidity": round(params.get("RH2M", {}).get(d, 50), 1),
-                "wind": round(params.get("WS2M", {}).get(d, 0), 1),
+                "date": d,
+                "day_of_week": datetime.strptime(d, "%Y-%m-%d").strftime("%A"),
+                "temp": temp_avg,
+                "temp_max": round(t_max, 1),
+                "temp_min": round(t_min, 1),
+                "precip": precip,
+                "humidity": humidity,
+                "wind": wind,
                 "moisture": moisture,
-                "solar_radiation": round(solar, 1) if solar else 0,
+                "solar_radiation": solar,
             })
         
         if not records:
