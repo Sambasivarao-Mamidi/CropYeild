@@ -130,29 +130,59 @@ const App = {
         const weatherEl = document.getElementById('sidebar-weather');
         
         try {
-            const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}&days=7`);
-            const data = await res.json();
-            
-            if (data.error) {
-                console.error('Weather error:', data.error);
-                weatherEl.classList.remove('show');
-                return;
-            }
-            
-            if (!data.length) throw new Error('No data');
+            // Call Open-Meteo directly from browser — avoids Render/server cold-start issues
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+                `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,shortwave_radiation_sum` +
+                `&hourly=relativehumidity_2m&current_weather=true&timezone=auto&forecast_days=7`;
+            const res = await fetch(url);
+            const raw = await res.json();
 
-            const latest = data[0]; // First record = today (Open-Meteo forecast starts from today)
-            document.getElementById('sw-temp').textContent = `${latest.temp}°C`;
-            document.getElementById('sw-humidity').textContent = `${latest.humidity}%`;
-            document.getElementById('sw-precip').textContent = `${latest.precip} mm`;
-            document.getElementById('sw-moisture').textContent = `${latest.moisture}%`;
-            document.getElementById('sw-wind').textContent = `${latest.wind} m/s`;
-            document.getElementById('weather-date').textContent = `Date: ${latest.date}`;
+            const daily = raw.daily || {};
+            const dates = daily.time || [];
+            if (!dates.length) throw new Error('No data');
+
+            // Build daily humidity averages from hourly data
+            const hourlyTimes = (raw.hourly || {}).time || [];
+            const hourlyRh = (raw.hourly || {}).relativehumidity_2m || [];
+            const dailyHumidity = {};
+            hourlyTimes.forEach((ht, i) => {
+                const day = ht.slice(0, 10);
+                if (!dailyHumidity[day]) dailyHumidity[day] = [];
+                if (hourlyRh[i] != null) dailyHumidity[day].push(hourlyRh[i]);
+            });
+
+            const data = dates.map((d, i) => {
+                const tMax = daily.temperature_2m_max[i];
+                const tMin = daily.temperature_2m_min[i];
+                const temp = Math.round((tMax + tMin) / 2 * 10) / 10;
+                const precip = Math.max(0, daily.precipitation_sum[i] || 0);
+                const wind = daily.windspeed_10m_max[i] || 0;
+                const solar = daily.shortwave_radiation_sum[i] || 0;
+                const rhArr = dailyHumidity[d] || [50];
+                const humidity = Math.round(rhArr.reduce((a, b) => a + b, 0) / rhArr.length * 10) / 10;
+                const moisture = Math.round(Math.min(80, Math.max(10, precip * 0.5 - (temp - 20) * 0.8 + 35)) * 10) / 10;
+                const dow = new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+                return {
+                    date: d, day_of_week: dow,
+                    temp, temp_max: Math.round(tMax * 10) / 10, temp_min: Math.round(tMin * 10) / 10,
+                    precip: Math.round(precip * 10) / 10,
+                    humidity, wind: Math.round(wind * 10) / 10,
+                    moisture, solar_radiation: Math.round(solar * 10) / 10,
+                };
+            });
+
+            const today = data[0]; // index 0 = today
+            document.getElementById('sw-temp').textContent = `${today.temp}°C`;
+            document.getElementById('sw-humidity').textContent = `${today.humidity}%`;
+            document.getElementById('sw-precip').textContent = `${today.precip} mm`;
+            document.getElementById('sw-moisture').textContent = `${today.moisture}%`;
+            document.getElementById('sw-wind').textContent = `${today.wind} m/s`;
+            document.getElementById('weather-date').textContent = `Date: ${today.date}`;
             weatherEl.classList.add('show');
 
-            document.getElementById('inp-temp').value = latest.temp;
-            document.getElementById('inp-rain').value = latest.precip;
-            document.getElementById('inp-moist').value = latest.moisture;
+            document.getElementById('inp-temp').value = today.temp;
+            document.getElementById('inp-rain').value = today.precip;
+            document.getElementById('inp-moist').value = today.moisture;
 
             this.weatherData = data;
             this.renderWeatherTab();
@@ -163,6 +193,7 @@ const App = {
             this.weatherData = null;
         }
     },
+
 
     initPredictForm() {
         fetch('/api/model-stats').then(r => r.json()).then(data => {
