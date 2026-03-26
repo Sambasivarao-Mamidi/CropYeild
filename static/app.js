@@ -141,7 +141,7 @@ const App = {
             
             if (!data.length) throw new Error('No data');
 
-            const latest = data[data.length - 1];
+            const latest = data[0]; // First record = today (Open-Meteo forecast starts from today)
             document.getElementById('sw-temp').textContent = `${latest.temp}°C`;
             document.getElementById('sw-humidity').textContent = `${latest.humidity}%`;
             document.getElementById('sw-precip').textContent = `${latest.precip} mm`;
